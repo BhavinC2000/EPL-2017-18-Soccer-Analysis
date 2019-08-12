@@ -1,0 +1,226 @@
+---
+title: "How important is team chemistry in soccer? A network analysis of the 2017/2018 EPL season"
+author: Bhavin Chaudhari
+output: html_notebook
+---
+
+# Introduction
+
+The topic of my project is soccer. Specifically, I'll be trying to look at the relationship between winning teams and the nationality of each team. 
+
+I chose this topic because I like to play soccer and FIFA is my favorite game. In the game, a big part of making a good team is having good team chemistry and, to do this, you essentially have to have players of the same nationality. I wanted to see how important that is in real life and are teams with players from the same nation better than teams with players from different nations? In other words, is team chemistry (through nationality) really important?
+
+Past research has found that "more diverse teams outperform less diverse ones" (https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2333289). However, some research also presents the potential for "communication and coordination problems, lack of trust and intra/intergroup conflict" (http://eprints.leedsbeckett.ac.uk/3808/1/SESM%20Conference%202017%20-%20Cultural%20diversity%20and%20team%20performance%20in%20the%20Italian%20Serie%20A%20%281%29.pdf). So, the impact of diversity in the players can have both positive and negative effects, but it raises the question: what is the ideal diversity to get the best performance while minimizing conflict?
+
+# Data
+
+I am using two datasets in my project: one of them shows each player in the English Premier League in the 2017/2018 season; the other shows each game in the English Premier League since the 1993/1994 season to the 2017/2018 season. I got both of these datasets from www.kaggle.com.
+
+Player Dataset: https://www.kaggle.com/mauryashubham/english-premier-league-players-dataset
+
+Games Dataset: https://www.kaggle.com/thefc17/epl-results-19932018
+
+Of course, any conclusions drawn from this project are not necessarily concrete because of the limited timespan that I am looking at. A team could've gotten really lucky in the 2017/2018 season, but that team wouldn't be representative of the actual relationship that I am trying to observe. So, my conclusion may be accurate, but it must be verified by checking with other seasons.
+
+# Methods
+First, I am uploading the data. The first dataset I'll be looking at shows the players in the EPL (English Premier League) during the 2017/18 season.
+```{r}
+library(sand)
+soccer <- read.csv("epldata_final.csv")
+soccer
+teamList <- levels(soccer$club)
+```
+
+Next, I'm trying to make an array of each team's nationality composition. I want to make a 61x20 array (20 for the number of teams; 61 for the number of different nationalities in the EPL). Then, for each row (each team), the 61 columns will have number showing the number of players of that nationality.
+
+I would've made it a 20x61 to make it clearer, but for the purposes of turning into a csv later, the 61x20 setup was more convenient.
+
+```{r}
+nationalityList <- levels(soccer$nationality)
+teamNationality <- matrix(, nrow = 61, ncol = 20)
+for (i in 1:61) {
+  for (j in 1:20) {
+    teamNationality[i, j] <- 0
+  }
+}
+for (j in 1:461) {
+  for (i in 1:61) {
+    for (k in 1:20) {
+      if (soccer[j, 2] == teamList[k]) {
+        if (soccer[j, 12] == nationalityList[i]) {
+          teamNationality[i, k] <- teamNationality[i, k] + 1
+        }
+      }
+    }
+  }
+}
+teamNationality
+teamList[3] <- "Brighton"
+teamList[6] <- "Crystal Palace"
+teamList[9] <- "Leicester"
+teamList[11] <- "Man City"
+teamList[12] <- "Man United"
+teamList[13] <- "Newcastle"
+teamList[15] <- "Stoke"
+teamList[19] <- "West Brom"
+teamList[20] <- "West Ham"
+```
+
+
+The second dataset I used shows the results of every EPL game since 1993/1994 season to the 2017/2018 season. There is data on which teams played, who won, the date of the game, etc. I shortened the csv to only look at the 2017/2018 season.
+
+I made a 20x2 array that shows how many games that each team won. Each row represents a different team. I treated wins as a +1, losses as a +0, and draws as a +.5 for each team.
+
+```{r}
+records <- read.csv("EPL_Set.csv")
+# August 11, 2017 (Start Date)
+# Start Row: 9285
+# May 13, 2018 (End Date)
+# End Row: 9664
+records <- records[-c(1:9284), ]
+winArray <- array(1:20)
+for (j in 1:20) {
+  winArray[j] = 0
+  for (i in 1:380) {
+    if (records[i, 3] == teamList[j]) {
+      if (records[i,7] == factor("H")) {
+        winArray[j] = winArray[j] + 1
+      } else if (records[i,7] == factor("D")) {
+        winArray[j] = winArray[j] + .5
+      }
+    } else if (records[i, 4] == teamList[j]) {
+      if (records[i,7] == factor("A")) {
+        winArray[j] = winArray[j] + 1
+      } else if (records[i,7] == factor("D")) {
+        winArray[j] = winArray[j] + .5
+      }
+    }
+  }
+}
+winMatrix <- matrix(c(teamList, winArray), nrow = 20, ncol = 2)
+winMatrix
+```
+
+Then, I tried to make a directed network of each teams' wins and losses. Each node is a team and each directed edge is a a game between the two teams. The edges point to the team that lost (I don't think it matters necessarily whether the edge points towards the winning team or losing team).
+
+```{r}
+winners <- array(1:380)
+losers <- array(1:380)
+for (i in 1:380) {
+  if (records[i, 7] == factor("A")) {
+    for (j in 1:20) {
+      if (records[i, 4] == teamList[j]) {
+        winners[i] = teamList[j]
+      }
+      if (records[i, 3] == teamList[j]) {
+        losers[i] = teamList[j]
+      }
+    }
+  } else if (records[i, 7] == factor("H")) {
+    for (j in 1:20) {
+      if (records[i, 4] == teamList[j]) {
+        losers[i] = teamList[j]
+      }
+      if (records[i, 3] == teamList[j]) {
+        winners[i] = teamList[j]
+      }
+    }
+  } else {
+    for (j in 1:20) {
+      if (records[i, 4] == teamList[j]) {
+        winners[i] = teamList[j]
+      }
+      if (records[i, 3] == teamList[j]) {
+        losers[i] = teamList[j]
+      }
+    }
+  }
+}
+el <- matrix(c(winners, losers), ncol = 2)
+#for (i in 1:380) {
+#  el <- matrix(c(winners, losers), nrow = 380, ncol = 2)
+#}
+g <- graph_from_edgelist(el)
+```
+
+
+Here, I turned my team nationality array into a csv and my win/lose network into a .gexf file. I used the csv file to make pie charts for each team, depicting the team's nationality composition. I made the .gexf file so I could upload the network to Gephi and make a neat, better network visualisation.
+
+```{r}
+# Make pie charts
+write.csv(teamNationality, "teamNationality.csv", row.names = FALSE, na="")
+igraph.to.gexf(g)
+```
+
+# Results
+
+I made pie charts depicting the nationality breakdown of each team.
+
+![](Arsenal.png)
+![](Bournemouth.png)
+![](Brighton.png)
+![](Burnley.png)
+![](Chelsea.png)
+![](CrystalPalace.png)
+![](Everton.png)
+![](Huddersfield.png)
+![](Leicester.png)
+![](Liverpool.png)
+![](ManCity.png)
+![](ManU.png)
+![](Newcastle.png)
+![](Southampton.png)
+![](Stoke.png)
+![](Swansea.png)
+![](Tottenham.png)
+![](Watford.png)
+![](WestBrom.png)
+![](WestHam.png)
+
+The most apparent observation that can be made is that most of the teams (except Chelsea) have a large English percentage.
+
+Below is the visualisation of my network. There are 20 nodes and 380 edges. Again, each edge points from the winning team to the losing team. The size of the nodes is proportional to that team's number of wins during the 2017/2018 season.
+
+![](Soccergraph.png)
+
+First, I want to look at Manchester City (since they did come in 1st place). Man City's team is relatively diverse, with less than 25% of their players being from England. Additionally, the majority of their squad seems to be made of players from Germany, Argentina, Belgium, Brazil and England.
+
+If we look at the rest of the top 5 teams (Man U [2nd], Tottenham [3rd], Liverpool [4th], and Chelsea [5th]), these teams have relatively diverse squads as well. But all the top 5 teams are generally made up of players from only 3 to 5 different countries.
+
+However, looking at the bottom of the EPL table (Swansea [18th], Stoke [19th], and West Brom [20th]), it seems that these teams are also relatively diverse, having the majority of their players coming from 3 to 5 countries as well. This hints that perhaps it is not a matter of the number of nationalities but which nationalities.
+
+### Top 5
+
+Man City - England, Germany, Belgium, Argentina, Brazil
+
+Man U - England, Spain, Belgium, France
+
+Tottenham - Belgium, France, England, Netherlands
+
+Liverpool - England, Germany, Brazil
+
+Chelsea - Spain, Belgium, Brazil, France
+
+### Bottom 3
+
+Swansea - England, Spain, Netherlands, Scotland
+
+Stoke - England, Spain, Scotland
+
+West Brom - Northern Ireland, England, Scotland, Wales
+
+Just looking at these team compositions, it seems that the better teams get many players from outside the British Isles. Also, Belgium, Brazil and France are the three countries that are shared between at least three of the top 5 teams, but none of the bottom 3 have players from these countries.
+
+# Discussion
+
+Obviously, this analysis is not representative of any overarching trends. So, it might be beneficial for someone to analyze the connection between team diversity and team standing in many different leagues across many seasons. It would be interesting to see if different leagues show different relationships between team diversity and team standing: for example, if the EPL shows that diversity is good while the Bundesliga shows that diversity is worse.
+
+I would have enjoyed looking at this but my dataset was limited--particularly, the first dataset on the players. That dataset only had information on the players during the 2017/2018 season. So, I could only look at the network of that season. 
+
+# Sources
+
+Francesco, Addesa, Vincenzo, Bove, and Giambattista, Rossi, Cultural diversity and team performance in the Italian Serie A (Oct 23, 2017). 
+
+Ingersoll, Keith and Malesky, Edmund J. and Saiegh, Sebastian M., Heterogeneity and Group Performance:     Evaluating the Effect of Cultural Diversity in the World's Top Soccer League (December 1, 2013). Available at SSRN: https://ssrn.com/abstract=2333289 or http://dx.doi.org/10.2139/ssrn.2333289
+
+
